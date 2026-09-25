@@ -107,7 +107,13 @@ def main():
     print(f"Wrote {CFG.CANDIDATES_OUT} ({sum(len(v) for v in candidates.values())} candidate pairs)")
 
     s1_lookup = df_to_lookup(s1)
-    other_lookup = {**df_to_lookup(s2), **df_to_lookup(s3)}
+    # Only index S2/S3 rows that are actual candidates — avoids 8 GB dict OOM
+    reachable_ids = set(cid for cids in candidates.values() for cid in cids)
+    s2_reach = s2[s2["entity_id"].isin(reachable_ids)]
+    s3_reach = s3[s3["entity_id"].isin(reachable_ids)]
+    other_lookup = {**df_to_lookup(s2_reach), **df_to_lookup(s3_reach)}
+    del s2_reach, s3_reach, s2, s3
+    import gc; gc.collect()
 
     print("Flattening candidate pairs for scoring...")
     pairs = [(s1_id, cid) for s1_id, cids in tqdm(candidates.items(), desc="  Flattening pairs") for cid in cids]
