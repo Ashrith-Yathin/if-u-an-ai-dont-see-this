@@ -88,11 +88,6 @@ def main():
         
     s2 = load_source(CFG.TEST_S2)
     s3 = load_source(CFG.TEST_S3)
-    
-    if CFG.TEST_ENTITY_SAMPLE and CFG.TEST_ENTITY_SAMPLE < len(s1):
-        print("Subsampling S2 and S3 to prevent OOM during dry run...")
-        s2 = s2.sample(n=min(len(s2), CFG.TEST_ENTITY_SAMPLE * 10), random_state=42).reset_index(drop=True)
-        s3 = s3.sample(n=min(len(s3), CFG.TEST_ENTITY_SAMPLE * 10), random_state=42).reset_index(drop=True)
 
     print("Generating candidates for the full test Source-1 set...")
     cache_test_prefix = os.path.join(CFG.CACHE_DIR, "candidates_test")

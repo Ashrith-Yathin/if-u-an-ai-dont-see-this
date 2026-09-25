@@ -164,12 +164,6 @@ def main():
         sampled_ids = stratified_entity_sample(s1, gt, CFG.TRAIN_ENTITY_SAMPLE, CFG.TRAIN_ENTITY_SAMPLE_SEED)
         s1 = s1[s1["entity_id"].isin(sampled_ids)].reset_index(drop=True)
         
-        # CRITICAL: We MUST also subsample S2 and S3 for dry runs, otherwise generating 
-        # deep learning embeddings for 5,000,000 target records takes 15GB of RAM and crashes Kaggle.
-        print("Subsampling S2 and S3 to prevent OOM during dry run...")
-        s2 = s2.sample(n=min(len(s2), CFG.TRAIN_ENTITY_SAMPLE * 10), random_state=42).reset_index(drop=True)
-        s3 = s3.sample(n=min(len(s3), CFG.TRAIN_ENTITY_SAMPLE * 10), random_state=42).reset_index(drop=True)
-        
         n_zero = sum(1 for eid in sampled_ids if len(gt.get(eid, set())) == 0)
         print(f"  Sampled {len(s1):,} entities — "
               f"zero-match: {100*n_zero/len(s1):.1f}%  "
