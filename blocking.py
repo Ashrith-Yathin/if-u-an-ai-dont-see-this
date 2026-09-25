@@ -152,27 +152,44 @@ def embedding_knn_candidates(s1_df, other_df, top_k=None, model_name=None, batch
             continue
 
         s1_emb = _get_or_compute_embeddings(s1_group, country, model, batch_size, cache_key=s1_tag)
-        other_emb = _get_or_compute_embeddings(other_group, country, model, batch_size, cache_key=other_tag)
-
-        k = min(top_k, len(other_group))
-        dim = other_emb.shape[1]
-
+        
         # Inner-product on L2-normalized vectors = cosine similarity
+        dim = s1_emb.shape[1]
         cpu_index = faiss.IndexFlatIP(dim)
-
+        
         if CFG.USE_FAISS_GPU:
             res = faiss.StandardGpuResources()
             index = faiss.index_cpu_to_gpu(res, 0, cpu_index)
         else:
             index = cpu_index
+            
+        # CRITICAL: Chunk the encoding of other_group to prevent Kaggle OOM!
+        # Encoding 5M strings at once takes 15GB of RAM and crashes the 16GB Kaggle kernel.
+        chunk_size = 250_000
+        for start_idx in range(0, len(other_group), chunk_size):
+            chunk_df = other_group.iloc[start_idx : start_idx + chunk_size]
+            # Use raw encode instead of cache wrapper so we can stream it directly into FAISS
+            emb_chunk = model.encode(
+                _combined_text(chunk_df), 
+                batch_size=batch_size,
+                show_progress_bar=False, 
+                normalize_embeddings=True,
+                convert_to_numpy=True
+            ).astype(np.float32)
+            index.add(emb_chunk)
+            del emb_chunk
+            gc.collect()
 
-        index.add(other_emb)
+        k = min(top_k, len(other_group))
         _, idx = index.search(s1_emb, k)
 
         other_ids = other_group["entity_id"].values
         s1_ids = s1_group["entity_id"].values
         for i, s1_id in enumerate(s1_ids):
             candidates[s1_id].update(other_ids[j] for j in idx[i] if j >= 0)
+
+        del index, cpu_index
+        gc.collect()
 
     result = dict(candidates)
     if cache_path:
