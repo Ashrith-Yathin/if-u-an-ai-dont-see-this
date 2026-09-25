@@ -7,17 +7,34 @@ from dataclasses import dataclass
 import torch
 
 
+import os
+import glob
+
+# Try to dynamically discover dataset paths
+IS_KAGGLE = os.path.exists('/kaggle')
+if IS_KAGGLE:
+    DATA_ROOT = '/kaggle/input'
+else:
+    # Local fallback
+    DATA_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'dataset'))
+    if not os.path.exists(DATA_ROOT):
+        DATA_ROOT = os.path.abspath('./dataset')
+
+def _find(name):
+    found = glob.glob(f'{DATA_ROOT}/**/{name}', recursive=True)
+    return found[0] if found else f"dataset/{name}"
+
 @dataclass
 class Config:
-    # ---- Paths (adjust to the actual student_resource/ layout) ----
-    TRAIN_S1: str = "dataset/train/train_source1.tsv"
-    TRAIN_S2: str = "dataset/train/train_source2.tsv"
-    TRAIN_S3: str = "dataset/train/train_source3.tsv"
-    TRAIN_GT: str = "dataset/train/train_ground_truth.tsv"
+    # ---- Paths (dynamically discovered if possible) ----
+    TRAIN_S1: str = _find('train_source1.tsv')
+    TRAIN_S2: str = _find('train_source2.tsv')
+    TRAIN_S3: str = _find('train_source3.tsv')
+    TRAIN_GT: str = _find('train_ground_truth.tsv')
 
-    TEST_S1: str = "dataset/test/test_source1.tsv"
-    TEST_S2: str = "dataset/test/test_source2.tsv"
-    TEST_S3: str = "dataset/test/test_source3.tsv"
+    TEST_S1: str = _find('test_source1.tsv')
+    TEST_S2: str = _find('test_source2.tsv')
+    TEST_S3: str = _find('test_source3.tsv')
 
     OUT_DIR: str = "output"
     CACHE_DIR: str = "output/cache"
