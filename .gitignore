@@ -1,0 +1,49 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Mac and OS metadata
+.DS_Store
+__MACOSX/
+Thumbs.db
+desktop.ini
+
+# Virtual environments
+env/
+venv/
+ENV/
+.venv/
+conda-env/
+
+# IDE and editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.agents/
+
+# Challenge Large Datasets & Archives (> 100MB / raw competition data)
+*.zip
+*.tar.gz
+*.tar
+*.rar
+student_resource/
+dataset/
+*.mp4
+video_analysis/
+
+# Large Output Files (> 100MB submission TSVs)
+*.tsv
+output/*.tsv
+
+# Output exceptions to keep
+!output/final_report.txt
+!output/.gitkeep
+
+# Scratch and logs
+scratch/
+*.log
+*.tmp
