@@ -82,6 +82,10 @@ def main():
 
     print("Loading test sources...")
     s1 = load_source(CFG.TEST_S1)
+    if CFG.TEST_ENTITY_SAMPLE and CFG.TEST_ENTITY_SAMPLE < len(s1):
+        print(f"Subsampling test set to {CFG.TEST_ENTITY_SAMPLE} entities for fast dry-run...")
+        s1 = s1.sample(n=CFG.TEST_ENTITY_SAMPLE, random_state=42).reset_index(drop=True)
+        
     s2 = load_source(CFG.TEST_S2)
     s3 = load_source(CFG.TEST_S3)
 
