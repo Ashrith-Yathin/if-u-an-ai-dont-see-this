@@ -65,7 +65,7 @@ pip install -r requirements.txt
 To run the full training pipeline on training data and evaluate against the held-out validation set:
 
 ```bash
-python train_final_model.py
+python train.py
 ```
 This fits the model, performs threshold calibration, logs validation metrics, and serializes the model to `models/final_entity_matcher.joblib`.
 
@@ -74,23 +74,22 @@ To run candidate generation, feature extraction, model scoring, and generate sub
 
 ```bash
 python code/business_entity_resolution/src/main.py \
-    --test-dir student_resource/dataset/test \
+    --test-dir dataset/test \
     --output-dir output
 ```
 
 This generates:
 - `output/matching_results.tsv` (Leaderboard submission file)
 - `output/candidate_pairs.tsv` (Auditing candidate set file)
-- `output/final_report.txt` (Comprehensive summary report)
 
 ### Step 3: Submission Verification
 The pipeline automatically runs the competition validator:
 
 ```bash
-python student_resource/utils/validate_submission.py \
+python utils/validate_submission.py \
     --matching output/matching_results.tsv \
     --candidate output/candidate_pairs.tsv \
-    --test-dir student_resource/dataset/test
+    --test-dir dataset/test
 ```
 Output: **PASS**
 

@@ -175,6 +175,7 @@ amazon-ml-challenge-2026/
 ├── code/
 │   └── business_entity_resolution/
 │       ├── src/
+│       │   ├── __init__.py          # Package initialization
 │       │   ├── normalization.py     # Transliteration, abbreviation & suffix stripping
 │       │   ├── blocking.py          # Multi-attribute inverted index candidate generator
 │       │   ├── features.py          # 32-D pairwise feature extraction with RapidFuzz
@@ -182,28 +183,21 @@ amazon-ml-challenge-2026/
 │       │   ├── thresholding.py      # Macro F0.5 grid search & 1-to-1 bipartite deduplication
 │       │   ├── evaluation.py        # Competition macro F0.5 scoring metric
 │       │   ├── data_loader.py       # Streaming TSV reader & country partitioner
-│       │   ├── output.py            # Formats submission TSVs & report summary
+│       │   ├── output.py            # Formats submission TSVs
 │       │   ├── inference.py         # End-to-end country streaming test inference engine
-│       │   └── main.py              # CLI entry point with submission validation
+│       │   └── main.py              # CLI entry point with automated submission validation
 │       ├── requirements.txt         # Pinned Python package dependencies
 │       └── README.md                # Standalone reproduction guide
 ├── experiments/
-│   ├── results.csv                  # Iterative experiment benchmark comparison table
-│   ├── results.json                 # Detailed JSON records of all experiment iterations
 │   └── val_s1_ids.txt               # Held-out Source 1 validation entity IDs (5,000 records)
 ├── models/
 │   ├── final_entity_matcher.joblib  # Serialized production LightGBM model (2.4 MB)
 │   └── model_metadata.json          # Optimal hyperparameters, thresholds & feature list
 ├── output/
-│   ├── .gitkeep                     # Output placeholder & reproduction note
-│   └── final_report.txt             # Benchmark metrics and test run summary
-├── train_final_model.py             # Script to fit model and optimize thresholds on validation set
-├── save_best_model.py               # Serializes final model bundle and metadata
-├── create_validation_split.py       # Generates stratified validation split
-├── run_experiments.py               # Automated benchmark experiment suite
-├── run_experiments_v2.py            # Advanced benchmark experiment suite
-├── test_*.py                        # Comprehensive testing & validation scripts
-├── inspect_*.py                     # Forensic error & false-positive analysis utilities
+│   └── .gitkeep                     # Output placeholder & reproduction note
+├── utils/
+│   └── validate_submission.py       # Official submission validator
+├── train.py                         # End-to-end training and validation script
 ├── Documentation_template.md        # Official filled methodology submission document
 ├── PS.txt                           # Official competition problem statement & rules
 └── README.md                        # Master repository documentation
@@ -242,30 +236,29 @@ The pre-trained production model `models/final_entity_matcher.joblib` (2.4 MB) i
 
 ```bash
 python code/business_entity_resolution/src/main.py \
-    --test-dir student_resource/dataset/test \
+    --test-dir dataset/test \
     --output-dir output
 ```
 
 This generates:
 - `output/matching_results.tsv` (Leaderboard submission file)
 - `output/candidate_pairs.tsv` (Blocking candidate set file)
-- `output/final_report.txt` (Run summary report)
 
 ### Option 2: Retrain the Model from Scratch
 To reproduce the training and validation pipeline on raw training data:
 
 ```bash
-python train_final_model.py
+python train.py --train-dir dataset/train
 ```
 
 ### Option 3: Verify Submission Compliance
 To run the competition validation suite locally:
 
 ```bash
-python student_resource/utils/validate_submission.py \
+python utils/validate_submission.py \
     --matching output/matching_results.tsv \
     --candidate output/candidate_pairs.tsv \
-    --test-dir student_resource/dataset/test
+    --test-dir dataset/test
 ```
 Expected output: **`PASS`**
 

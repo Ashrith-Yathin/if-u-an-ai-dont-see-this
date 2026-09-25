@@ -9,9 +9,17 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from inference import run_test_inference
 
 
+def auto_detect_test_dir():
+    candidates = ['dataset/test', 'student_resource/dataset/test']
+    for c in candidates:
+        if os.path.isdir(c):
+            return c
+    return candidates[0]
+
+
 def main():
     parser = argparse.ArgumentParser(description='ML Challenge 2026: Business Entity Resolution Pipeline')
-    parser.add_argument('--test-dir', default='student_resource/dataset/test',
+    parser.add_argument('--test-dir', default=auto_detect_test_dir(),
                         help='Path to test dataset directory containing test_source1/2/3.tsv')
     parser.add_argument('--model-path', default='models/final_entity_matcher.joblib',
                         help='Path to saved trained model')
@@ -40,7 +48,9 @@ def main():
 
     # Validate output
     if args.validate:
-        validator_script = os.path.join('student_resource', 'utils', 'validate_submission.py')
+        validator_script = os.path.join('utils', 'validate_submission.py')
+        if not os.path.isfile(validator_script):
+            validator_script = os.path.join('student_resource', 'utils', 'validate_submission.py')
         matching_file = os.path.join(args.output_dir, 'matching_results.tsv')
         candidate_file = os.path.join(args.output_dir, 'candidate_pairs.tsv')
 
