@@ -62,8 +62,8 @@ class Config:
     # S1 entity IDs is drawn (stratified by country + match-count bucket) before
     # generating candidates and building feature matrices.  150k–200k gives ~95% of the
     # signal at ~10% of the compute cost.
-    TRAIN_ENTITY_SAMPLE: int = 1000      # None = use all; set to 1000 for fast dry runs
-    TEST_ENTITY_SAMPLE: int = 1000       # None = use all; set to a small number (e.g. 1000) for fast dry-runs
+    TRAIN_ENTITY_SAMPLE: int = 175_000    # None = use all; int = stratified subsample size
+    TEST_ENTITY_SAMPLE: int = None         # None = use all for full submission run
     TRAIN_ENTITY_SAMPLE_SEED: int = 42   # separate seed so changing it doesn't affect other rng
     TFIDF_SAMPLE_SIZE: int = 100_000     # Subsample size per dataframe to avoid memory blowup during TF-IDF fitting
 
