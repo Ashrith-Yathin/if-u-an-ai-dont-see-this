@@ -14,7 +14,7 @@ from normalize import normalize_name, normalize_address
 
 def load_source(path: str, use_cache: bool = True) -> pd.DataFrame:
     fname = os.path.basename(path)
-    cache_path = path.replace(".tsv", "_normalized.parquet")
+    cache_path = os.path.join(CFG.CACHE_DIR, fname.replace(".tsv", "_normalized.parquet"))
 
     if use_cache and os.path.exists(cache_path):
         if os.path.getmtime(cache_path) >= os.path.getmtime(path):
