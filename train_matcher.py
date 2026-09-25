@@ -158,14 +158,7 @@ def main():
     s3 = load_source(CFG.TRAIN_S3)
     gt = load_ground_truth(CFG.TRAIN_GT)
 
-    print("Generating candidates (all Source-1 train entities)...")
-    # Use the base cache prefix so it picks up the user's existing 2.2M run caches.
-    cache_train_prefix = os.path.join(CFG.CACHE_DIR, "candidates_train")
-    cand_all = generate_candidates(s1, s2, s3, cache_prefix=cache_train_prefix)
-
-    # ── B: Stratified entity subsampling ─────────────────────────────────
-    # We do this *after* candidate generation so we can fully utilize any existing
-    # candidate/embedding caches built for the full 2.2M dataset.
+    # ── B: Stratified entity subsampling (MOVED BEFORE CANDIDATE GENERATION FOR DRY-RUNS) ─
     if CFG.TRAIN_ENTITY_SAMPLE is not None and CFG.TRAIN_ENTITY_SAMPLE < len(s1):
         print(f"Stratified subsampling {CFG.TRAIN_ENTITY_SAMPLE:,} / {len(s1):,} S1 entities "
               f"(stratified by country × match-count bucket)...")
@@ -173,7 +166,6 @@ def main():
             s1, gt, CFG.TRAIN_ENTITY_SAMPLE, CFG.TRAIN_ENTITY_SAMPLE_SEED
         )
         s1 = s1[s1["entity_id"].isin(sampled_ids)].reset_index(drop=True)
-        cand_all = {k: cand_all[k] for k in sampled_ids if k in cand_all}
         
         n_zero = sum(1 for eid in sampled_ids if len(gt.get(eid, set())) == 0)
         print(f"  Sampled {len(s1):,} entities — "
@@ -181,6 +173,10 @@ def main():
               f"(full corpus: 5.6%)")
     else:
         print(f"Using all {len(s1):,} S1 entities (TRAIN_ENTITY_SAMPLE=None or >= corpus size).")
+
+    print("Generating candidates (for the S1 entities)...")
+    cache_train_prefix = os.path.join(CFG.CACHE_DIR, "candidates_train")
+    cand_all = generate_candidates(s1, s2, s3, cache_prefix=cache_train_prefix)
 
     train_ids, val_ids = entity_level_split(s1["entity_id"], CFG.VAL_FRAC, CFG.SEED)
     if len(val_ids) == 0:
