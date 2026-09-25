@@ -70,7 +70,7 @@ class Config:
 
     # ---- GPU acceleration (for 80 GB VRAM Linux server) ----
     DEVICE: str = "cuda" if torch.cuda.is_available() else "cpu"
-    USE_FAISS_GPU: bool = torch.cuda.is_available()   # FAISS-GPU kNN instead of sklearn
+    USE_FAISS_GPU: bool = False   # Set to False to keep FAISS on CPU RAM (30GB) and avoid GPU VRAM crashes
     EMBEDDING_BATCH_SIZE: int = 2048 if torch.cuda.is_available() else 128
     USE_XGBOOST: bool = True   # XGBoost with device="cuda"; False = LightGBM CPU
 
