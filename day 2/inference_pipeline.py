@@ -32,6 +32,8 @@ from config import CFG
 from data_utils import load_source, write_matching_results, write_candidate_pairs
 from blocking import generate_candidates
 from features import fit_tfidf_on_all_text, build_feature_matrix, df_to_lookup
+import torch
+from train_matcher import MLP, get_mlp_preds
 
 
 def _fit_tfidf_memory_efficient(*paths) -> TfidfVectorizer:
@@ -114,32 +116,27 @@ def main():
     pairs = [(s1_id, cid) for s1_id, cids in tqdm(candidates.items(), desc="  Flattening pairs") for cid in cids]
     print(f"Scoring {len(pairs)} candidate pairs...")
 
-    # Auto-detect model format: XGBoost (.json) vs LightGBM (.txt)
-    model_path = args.model
-    if model_path is None:
-        if os.path.exists("outputs_model.json"):
-            model_path = "outputs_model.json"
-        else:
-            model_path = "outputs_model.txt"
-
-    use_xgb = model_path.endswith(".json")
-    if use_xgb:
-        model = xgb.XGBClassifier()
-        model.load_model(model_path)
-        print(f"Loaded XGBoost model from {model_path}")
-    else:
-        model = lgb.Booster(model_file=model_path)
-        print(f"Loaded LightGBM model from {model_path}")
+    print("Loading Blended Models (XGBoost + PyTorch MLP)...")
+    xgb_model = xgb.XGBClassifier()
+    xgb_model.load_model("outputs_xgb_model.json")
+    
+    mlp_stats = np.load("outputs_mlp_stats.npy", allow_pickle=True).item()
+    mlp_mean, mlp_std = mlp_stats["mean"], mlp_stats["std"]
 
     matches = {s1_id: set() for s1_id in all_s1_ids}
 
     if pairs:
         X, valid_pairs = build_feature_matrix(pairs, s1_lookup, other_lookup, tfidf_vec)
-        print("Scoring candidate pairs with model...")
-        if use_xgb:
-            scores = model.predict_proba(X)[:, 1]
-        else:
-            scores = model.predict(X)
+        
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        mlp_model = MLP(X.shape[1]).to(device)
+        mlp_model.load_state_dict(torch.load("outputs_mlp_model.pth", map_location=device))
+        
+        print("Scoring candidate pairs with blended models...")
+        xgb_preds = xgb_model.predict_proba(X)[:, 1] if len(X) else np.array([])
+        mlp_preds = get_mlp_preds(mlp_model, X, mlp_mean, mlp_std) if len(X) else np.array([])
+        scores = (xgb_preds + mlp_preds) / 2.0
+        
         for (s1_id, other_id), score in tqdm(zip(valid_pairs, scores), total=len(valid_pairs), desc="  Filtering matches by threshold"):
             if score >= threshold:
                 matches[s1_id].add(other_id)
