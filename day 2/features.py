@@ -20,11 +20,12 @@ def fit_tfidf_on_all_text(*dfs) -> TfidfVectorizer:
     vec.fit(all_text)
     return vec
 
-def df_to_lookup(df: pd.DataFrame) -> dict:
-    lookup = {}
-    for row in tqdm(df.itertuples(index=False), total=len(df), desc="  Indexing lookup table"):
-        lookup[row.entity_id] = row
-    return lookup
+def df_to_lookup(df: pd.DataFrame) -> tuple:
+    id_to_idx = {str(k): i for i, k in enumerate(df["entity_id"].values)}
+    names = df["norm_name"].fillna("").astype(str).values
+    addrs = df["norm_addr"].fillna("").astype(str).values
+    countries = df["country"].fillna("").astype(str).values
+    return id_to_idx, names, addrs, countries
 
 def process_chunk(chunk_pairs, s1_lookup, other_lookup, tfidf_vec):
     names_a, names_b = [], []
@@ -32,18 +33,28 @@ def process_chunk(chunk_pairs, s1_lookup, other_lookup, tfidf_vec):
     countries_a, countries_b = [], []
     valid_pairs = []
 
+    s1_map, s1_names, s1_addrs, s1_countries = s1_lookup
+    o_map, o_names, o_addrs, o_countries = other_lookup
+
     for s1_id, other_id in chunk_pairs:
-        row_a = s1_lookup.get(s1_id)
-        row_b = other_lookup.get(other_id)
-        if row_a is None or row_b is None:
+        idx_a = s1_map.get(s1_id)
+        idx_b = o_map.get(other_id)
+        if idx_a is None or idx_b is None:
+            names_a.append("")
+            names_b.append("")
+            addrs_a.append("")
+            addrs_b.append("")
+            countries_a.append("")
+            countries_b.append("")
+            valid_pairs.append((s1_id, other_id))
             continue
             
-        names_a.append(str(getattr(row_a, "norm_name", "")) or "")
-        names_b.append(str(getattr(row_b, "norm_name", "")) or "")
-        addrs_a.append(str(getattr(row_a, "norm_addr", "")) or "")
-        addrs_b.append(str(getattr(row_b, "norm_addr", "")) or "")
-        countries_a.append(str(getattr(row_a, "country", "")) or "")
-        countries_b.append(str(getattr(row_b, "country", "")) or "")
+        names_a.append(s1_names[idx_a])
+        names_b.append(o_names[idx_b])
+        addrs_a.append(s1_addrs[idx_a])
+        addrs_b.append(o_addrs[idx_b])
+        countries_a.append(s1_countries[idx_a])
+        countries_b.append(o_countries[idx_b])
         valid_pairs.append((s1_id, other_id))
 
     if not valid_pairs:

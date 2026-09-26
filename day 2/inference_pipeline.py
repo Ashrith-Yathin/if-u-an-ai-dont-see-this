@@ -108,8 +108,9 @@ def main():
     reachable_ids = set(cid for cids in candidates.values() for cid in cids)
     s2_reach = s2[s2["entity_id"].isin(reachable_ids)]
     s3_reach = s3[s3["entity_id"].isin(reachable_ids)]
-    other_lookup = {**df_to_lookup(s2_reach), **df_to_lookup(s3_reach)}
-    del s2_reach, s3_reach, s2, s3
+    s23_reach = pd.concat([s2_reach, s3_reach])
+    other_lookup = df_to_lookup(s23_reach)
+    del s2_reach, s3_reach, s23_reach, s2, s3
     import gc; gc.collect()
 
     print("Flattening candidate pairs for scoring...")
@@ -133,7 +134,16 @@ def main():
         mlp_model.load_state_dict(torch.load("outputs_mlp_model.pth", map_location=device))
         
         print("Scoring candidate pairs with blended models...")
-        xgb_preds = xgb_model.predict_proba(X)[:, 1] if len(X) else np.array([])
+        CHUNK_SIZE = 1_000_000
+        xgb_preds = []
+        if len(X) > 0:
+            for i in range(0, len(X), CHUNK_SIZE):
+                X_chunk = X[i:i + CHUNK_SIZE]
+                xgb_preds.append(xgb_model.predict_proba(X_chunk)[:, 1])
+            xgb_preds = np.concatenate(xgb_preds)
+        else:
+            xgb_preds = np.array([])
+            
         mlp_preds = get_mlp_preds(mlp_model, X, mlp_mean, mlp_std) if len(X) else np.array([])
         scores = (xgb_preds + mlp_preds) / 2.0
         

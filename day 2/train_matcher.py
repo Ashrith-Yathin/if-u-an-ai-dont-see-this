@@ -157,8 +157,9 @@ def main():
     reachable_other_ids = set(cid for cids in cand_all.values() for cid in cids)
     s2_reachable = s2[s2["entity_id"].isin(reachable_other_ids)]
     s3_reachable = s3[s3["entity_id"].isin(reachable_other_ids)]
-    other_lookup = {**df_to_lookup(s2_reachable), **df_to_lookup(s3_reachable)}
-    del s2_reachable, s3_reachable
+    s23_reachable = pd.concat([s2_reachable, s3_reachable])
+    other_lookup = df_to_lookup(s23_reachable)
+    del s2_reachable, s3_reachable, s23_reachable
     import gc; gc.collect()
 
     print("Building training pairs...")
