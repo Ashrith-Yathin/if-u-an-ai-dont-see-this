@@ -43,7 +43,7 @@ class Config:
 
     # ---- Blocking ----
     BLOCK_KEY_PREFIX_LEN: int = 4        # first-N-chars-of-normalized-name blocking key
-    MAX_STRING_CANDIDATES_PER_KEY: int = 300  # caps mega-buckets (e.g. generic prefixes) to prevent OOM
+    MAX_STRING_CANDIDATES_PER_KEY: int = 100  # caps mega-buckets (e.g. generic prefixes) to prevent OOM
     TOP_K_EMBEDDING: int = 15            # nearest neighbours per S1 entity, per source, via embeddings
     USE_EMBEDDING_BLOCKING: bool = False
     SAVE_RAW_EMBEDDINGS: bool = True     # saves .npy dense vectors on disk to avoid re-encoding on restarts
