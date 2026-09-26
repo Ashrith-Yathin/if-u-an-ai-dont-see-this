@@ -166,7 +166,7 @@ def embedding_knn_candidates(s1_df, other_df, top_k=None, model_name=None, batch
         # CRITICAL: Chunk the encoding of other_group to prevent Kaggle OOM!
         # Encoding 5M strings at once takes 15GB of RAM and crashes the 16GB Kaggle kernel.
         chunk_size = 250_000
-        for start_idx in range(0, len(other_group), chunk_size):
+        for start_idx in tqdm(range(0, len(other_group), chunk_size), desc=f"    Encoding {len(other_group):,} targets"):
             chunk_df = other_group.iloc[start_idx : start_idx + chunk_size]
             # Use raw encode instead of cache wrapper so we can stream it directly into FAISS
             emb_chunk = model.encode(
