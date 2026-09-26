@@ -189,7 +189,11 @@ def main():
     X_val, valid_val_pairs = build_feature_matrix(val_pairs, s1_lookup, other_lookup, tfidf_vec)
     
     print("Extracting predictions...")
-    xgb_preds = xgb_model.predict_proba(X_val)[:, 1] if len(X_val) else np.array([])
+    XGB_CHUNK = 1_000_000
+    xgb_preds_list = []
+    for i in range(0, len(X_val), XGB_CHUNK):
+        xgb_preds_list.append(xgb_model.predict_proba(X_val[i:i+XGB_CHUNK])[:, 1])
+    xgb_preds = np.concatenate(xgb_preds_list) if xgb_preds_list else np.array([])
     mlp_preds = get_mlp_preds(mlp_model, X_val, mlp_mean, mlp_std) if len(X_val) else np.array([])
     
     # Simple blend average
