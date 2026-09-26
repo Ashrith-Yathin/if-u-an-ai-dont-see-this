@@ -92,8 +92,7 @@ def main():
     s3 = load_source(CFG.TEST_S3)
 
     print("Generating candidates for the full test Source-1 set...")
-    cache_test_prefix = os.path.join(CFG.CACHE_DIR, "candidates_test")
-    candidates = generate_candidates(s1, s2, s3, cache_prefix=cache_test_prefix)
+    candidates = generate_candidates(s1, s2, s3, cache_prefix=None)
 
     # Every Source-1 entity must appear, even with an empty candidate/match list.
     all_s1_ids = set(s1["entity_id"])
