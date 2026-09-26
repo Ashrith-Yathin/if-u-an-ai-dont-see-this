@@ -115,11 +115,18 @@ def entity_level_split(s1_ids, val_frac, seed):
 
 def tune_threshold(scores, valid_pairs, ground_truth, all_s1_ids_in_split):
     best_t, best_f0_5 = 0.5, -1.0
-    for t in tqdm(np.arange(0.1, 0.95, 0.05), desc="  Sweeping F_0.5 thresholds"):
+    for t in tqdm(np.arange(0.05, 1.0, 0.01), desc="  Sweeping F_0.5 thresholds"):
         preds = {s1_id: set() for s1_id in all_s1_ids_in_split}
-        for (s1_id, other_id), score in zip(valid_pairs, scores):
+        
+        # Sort predictions by score descending for one-owner rule
+        scored_pairs = sorted(zip(valid_pairs, scores), key=lambda x: x[1], reverse=True)
+        assigned_others = set()
+        
+        for (s1_id, other_id), score in scored_pairs:
             if score >= t:
-                preds[s1_id].add(other_id)
+                if other_id not in assigned_others:
+                    preds[s1_id].add(other_id)
+                    assigned_others.add(other_id)
         truth_subset = {k: v for k, v in ground_truth.items() if k in all_s1_ids_in_split}
         result = macro_f0_5(preds, truth_subset)
         if result["macro_f0_5"] > best_f0_5:
@@ -157,9 +164,8 @@ def main():
     reachable_other_ids = set(cid for cids in cand_all.values() for cid in cids)
     s2_reachable = s2[s2["entity_id"].isin(reachable_other_ids)]
     s3_reachable = s3[s3["entity_id"].isin(reachable_other_ids)]
-    s23_reachable = pd.concat([s2_reachable, s3_reachable])
-    other_lookup = df_to_lookup(s23_reachable)
-    del s2_reachable, s3_reachable, s23_reachable
+    other_lookup = {**df_to_lookup(s2_reachable), **df_to_lookup(s3_reachable)}
+    del s2_reachable, s3_reachable
     import gc; gc.collect()
 
     print("Building training pairs...")

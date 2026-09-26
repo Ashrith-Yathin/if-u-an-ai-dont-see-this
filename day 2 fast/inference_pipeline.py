@@ -108,9 +108,8 @@ def main():
     reachable_ids = set(cid for cids in candidates.values() for cid in cids)
     s2_reach = s2[s2["entity_id"].isin(reachable_ids)]
     s3_reach = s3[s3["entity_id"].isin(reachable_ids)]
-    s23_reach = pd.concat([s2_reach, s3_reach])
-    other_lookup = df_to_lookup(s23_reach)
-    del s2_reach, s3_reach, s23_reach, s2, s3
+    other_lookup = {**df_to_lookup(s2_reach), **df_to_lookup(s3_reach)}
+    del s2_reach, s3_reach, s2, s3
     import gc; gc.collect()
 
     print("Flattening candidate pairs for scoring...")
@@ -134,22 +133,19 @@ def main():
         mlp_model.load_state_dict(torch.load("outputs_mlp_model.pth", map_location=device))
         
         print("Scoring candidate pairs with blended models...")
-        CHUNK_SIZE = 1_000_000
-        xgb_preds = []
-        if len(X) > 0:
-            for i in range(0, len(X), CHUNK_SIZE):
-                X_chunk = X[i:i + CHUNK_SIZE]
-                xgb_preds.append(xgb_model.predict_proba(X_chunk)[:, 1])
-            xgb_preds = np.concatenate(xgb_preds)
-        else:
-            xgb_preds = np.array([])
-            
+        xgb_preds = xgb_model.predict_proba(X)[:, 1] if len(X) else np.array([])
         mlp_preds = get_mlp_preds(mlp_model, X, mlp_mean, mlp_std) if len(X) else np.array([])
         scores = (xgb_preds + mlp_preds) / 2.0
         
-        for (s1_id, other_id), score in tqdm(zip(valid_pairs, scores), total=len(valid_pairs), desc="  Filtering matches by threshold"):
+        # Enforce one-owner rule: target candidate belongs to the S1 that scores it highest
+        scored_pairs = sorted(zip(valid_pairs, scores), key=lambda x: x[1], reverse=True)
+        assigned_others = set()
+        
+        for (s1_id, other_id), score in tqdm(scored_pairs, desc="  Filtering matches by threshold (One-Owner)"):
             if score >= threshold:
-                matches[s1_id].add(other_id)
+                if other_id not in assigned_others:
+                    matches[s1_id].add(other_id)
+                    assigned_others.add(other_id)
 
     write_matching_results(matches)
     n_matched_entities = sum(1 for v in matches.values() if v)
