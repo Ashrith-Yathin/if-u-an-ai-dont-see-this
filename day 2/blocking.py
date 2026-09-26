@@ -45,37 +45,107 @@ def load_candidates_cache(cache_path: str) -> dict:
     return loaded
 
 
+import re
+from collections import Counter
+
+COMMON_ADDR_WORDS = {
+    'street', 'road', 'avenue', 'boulevard', 'drive', 'court', 'lane', 'place',
+    'circle', 'way', 'trail', 'parkway', 'highway', 'suite', 'floor', 'apartment',
+    'building', 'room', 'number', 'near', 'opposite', 'behind', 'block', 'sector',
+    'phase', 'plot', 'flat', 'door', 'fl', 'no', 'unit', 'north', 'south', 'east', 'west',
+    'india', 'us', 'usa', 'france', 'state', 'district', 'city', 'nagar', 'colony',
+    'bazaar', 'marg', 'gali', 'null', 'rd', 'st', 'ave', 'blvd', 'dr', 'ct', 'ln',
+    'hwy', 'apt', 'ste', 'first', 'second', 'third', 'ground'
+}
+
+def get_blocking_keys(norm_name, norm_addr, country):
+    keys = set()
+    if not isinstance(norm_name, str): norm_name = ""
+    if not isinstance(norm_addr, str): norm_addr = ""
+    
+    n_tokens = norm_name.split()
+    a_tokens = norm_addr.split()
+    nums = set(re.findall(r'\b\d+\b', norm_addr))
+    
+    # 1. Compact name
+    compact_name = ''.join(n_tokens)
+    if len(compact_name) >= 4:
+        keys.add((country, 'compact_n', compact_name))
+        
+    # 2. Core name exact
+    if len(norm_name) >= 3:
+        keys.add((country, 'core_n', norm_name))
+        
+    # 3. First 2 tokens of name
+    if len(n_tokens) >= 2:
+        keys.add((country, 'n2', f'{n_tokens[0]}_{n_tokens[1]}'))
+    elif len(n_tokens) == 1 and len(n_tokens[0]) >= 3:
+        keys.add((country, 'n1', n_tokens[0]))
+        
+    # 4. Individual name tokens
+    for t in n_tokens:
+        if len(t) >= 4:
+            keys.add((country, 'n_tok', t))
+            
+    # Address tokens: extract significant words
+    sig_addr_words = [t for t in a_tokens if t not in COMMON_ADDR_WORDS and len(t) >= 3 and not t.isdigit()]
+    
+    # 5. Number + City (last 2 tokens of address)
+    if nums and len(a_tokens) >= 1:
+        for num in nums:
+            keys.add((country, 'num_city1', f'{num}_{a_tokens[-1]}'))
+            if len(a_tokens) >= 2:
+                keys.add((country, 'num_city2', f'{num}_{a_tokens[-2]}'))
+                
+    # 6. Street number + rare address word
+    if nums and sig_addr_words:
+        for num in nums:
+            for w in sig_addr_words[:3]:
+                keys.add((country, 'num_street', f'{num}_{w}'))
+                
+    # 7. Name token + Street number
+    if n_tokens and nums:
+        for num in nums:
+            keys.add((country, 'name_num', f'{n_tokens[0]}_{num}'))
+            if len(n_tokens) >= 2:
+                keys.add((country, 'name_num2', f'{n_tokens[1]}_{num}'))
+                
+    return keys
+
 def string_key_candidates(s1_df, other_df, prefix_len=None, max_candidates=None, cache_path=None):
     if cache_path and os.path.exists(cache_path):
         return load_candidates_cache(cache_path)
 
-    prefix_len = prefix_len or CFG.BLOCK_KEY_PREFIX_LEN
-    max_candidates = max_candidates or getattr(CFG, "MAX_STRING_CANDIDATES_PER_KEY", 300)
+    # 1. Build Multi-Key Inverted Index
+    index = defaultdict(list)
+    for row in tqdm(other_df.itertuples(index=False), total=len(other_df), desc="  Indexing multi-keys (target)", mininterval=5.0):
+        keys = get_blocking_keys(row.norm_name, row.norm_addr, row.country)
+        for k in keys:
+            index[k].append(row.entity_id)
 
-    other_by_key = defaultdict(list)
-    for row in tqdm(other_df.itertuples(index=False), total=len(other_df), desc="  Indexing string keys (target)", mininterval=5.0):
-        key = blocking_key(row.norm_name, row.country, prefix_len)
-        other_by_key[key].append(row.entity_id)
+    # Prune ultra-frequent keys to prevent generic matches (e.g. matching 10,000 businesses in one key)
+    prune_limit = 300
+    for k in list(index.keys()):
+        if len(index[k]) > prune_limit:
+            del index[k]
 
-    # Convert to tuples and cap mega-buckets (e.g. generic prefixes with 30k+ entities)
-    # to prevent runaway Cartesian memory explosion and OOM
-    other_by_key_tuple = {}
-    for k, v in other_by_key.items():
-        if max_candidates and len(v) > max_candidates:
-            other_by_key_tuple[k] = tuple(v[:max_candidates])
-        else:
-            other_by_key_tuple[k] = tuple(v)
-    del other_by_key
-    gc.collect()
-
+    # 2. Retrieve Candidates
     candidates = {}
-    for row in tqdm(s1_df.itertuples(index=False), total=len(s1_df), desc="  Matching string keys (source)", mininterval=5.0):
-        key = blocking_key(row.norm_name, row.country, prefix_len)
-        cands = other_by_key_tuple.get(key)
-        if cands:
-            candidates[row.entity_id] = list(cands)
+    # We aim for ~15 high-quality candidates per entity
+    top_k_candidates = max_candidates or getattr(CFG, "MAX_STRING_CANDIDATES_PER_KEY", 15)
+    
+    for row in tqdm(s1_df.itertuples(index=False), total=len(s1_df), desc="  Retrieving multi-key candidates (source)", mininterval=5.0):
+        s_keys = get_blocking_keys(row.norm_name, row.norm_addr, row.country)
+        counts = Counter()
+        for k in s_keys:
+            if k in index:
+                counts.update(index[k])
+                
+        if counts:
+            # Only keep the candidates that share the most specific keys
+            candidates[row.entity_id] = [cid for cid, count in counts.most_common(top_k_candidates)]
 
-    del other_by_key_tuple
+    del index
     gc.collect()
 
     if cache_path:
