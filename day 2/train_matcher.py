@@ -114,9 +114,9 @@ def main():
     cand_all = pd.read_parquet(os.path.join(CFG.CACHE_DIR, "candidates_train_combined.parquet"))
     cand_all = {row.entity_id: set(row.candidates) for row in cand_all.itertuples(index=False)}
 
-    gt_df = pd.read_csv("train_ground_truth.tsv", sep="\t")
-    gt = {str(row.source_1): set(str(row.matched_entities).split(",")) 
-          for row in gt_df.itertuples(index=False) if pd.notna(row.matched_entities)}
+    gt_df = pd.read_csv(CFG.TRAIN_GT, sep="\t")
+    gt = {str(row.source1_entity_id): set(str(row.matched_entity_ids).split(",")) 
+          for row in gt_df.itertuples(index=False) if pd.notna(row.matched_entity_ids)}
 
     train_ids, val_ids = entity_level_split(s1["entity_id"], CFG.VAL_FRAC, CFG.SEED)
     s1_train = s1[s1["entity_id"].isin(train_ids)].reset_index(drop=True)
