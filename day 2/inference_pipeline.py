@@ -127,29 +127,35 @@ def main():
     matches = {s1_id: set() for s1_id in all_s1_ids}
 
     if pairs:
-        X, valid_pairs = build_feature_matrix(pairs, s1_lookup, other_lookup, tfidf_vec)
-        
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        mlp_model = MLP(X.shape[1]).to(device)
+        # Initialize MLP with 14 features (hardcoded matching train_matcher)
+        from train_matcher import MLP
+        mlp_model = MLP(14).to(device)
         mlp_model.load_state_dict(torch.load("outputs_mlp_model.pth", map_location=device))
         
-        print("Scoring candidate pairs with blended models...")
-        CHUNK_SIZE = 1_000_000
-        xgb_preds = []
-        if len(X) > 0:
-            for i in range(0, len(X), CHUNK_SIZE):
-                X_chunk = X[i:i + CHUNK_SIZE]
-                xgb_preds.append(xgb_model.predict_proba(X_chunk)[:, 1])
-            xgb_preds = np.concatenate(xgb_preds)
-        else:
-            xgb_preds = np.array([])
-            
-        mlp_preds = get_mlp_preds(mlp_model, X, mlp_mean, mlp_std) if len(X) else np.array([])
-        scores = (xgb_preds + mlp_preds) / 2.0
+        PAIR_CHUNK = 2_000_000
+        total_chunks = (len(pairs) // PAIR_CHUNK) + 1
         
-        for (s1_id, other_id), score in tqdm(zip(valid_pairs, scores), total=len(valid_pairs), desc="  Filtering matches by threshold"):
-            if score >= threshold:
-                matches[s1_id].add(other_id)
+        for i in range(0, len(pairs), PAIR_CHUNK):
+            chunk_pairs = pairs[i:i + PAIR_CHUNK]
+            print(f"--- Processing pair chunk {i // PAIR_CHUNK + 1}/{total_chunks} ({len(chunk_pairs)} pairs) ---")
+            
+            X, valid_pairs = build_feature_matrix(chunk_pairs, s1_lookup, other_lookup, tfidf_vec)
+            if not len(X):
+                continue
+                
+            XGB_CHUNK = 1_000_000
+            xgb_preds = []
+            for j in range(0, len(X), XGB_CHUNK):
+                xgb_preds.append(xgb_model.predict_proba(X[j:j+XGB_CHUNK])[:, 1])
+            xgb_preds = np.concatenate(xgb_preds)
+            
+            mlp_preds = get_mlp_preds(mlp_model, X, mlp_mean, mlp_std)
+            scores = (xgb_preds + mlp_preds) / 2.0
+            
+            for (s1_id, other_id), score in zip(valid_pairs, scores):
+                if score >= threshold:
+                    matches[s1_id].add(other_id)
 
     write_matching_results(matches)
     n_matched_entities = sum(1 for v in matches.values() if v)

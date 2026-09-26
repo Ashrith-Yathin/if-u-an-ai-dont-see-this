@@ -142,6 +142,14 @@ def main():
           for row in gt_df.itertuples(index=False) if pd.notna(row.matched_entity_ids)}
 
     train_ids, val_ids = entity_level_split(s1["entity_id"], CFG.VAL_FRAC, CFG.SEED)
+    
+    val_ids = list(val_ids)
+    if len(val_ids) > 50_000:
+        import random
+        rng = random.Random(CFG.SEED)
+        val_ids = rng.sample(val_ids, 50_000)
+        print(f"Subsampled validation set to 50,000 entities to save RAM and time.")
+
     s1_train = s1[s1["entity_id"].isin(train_ids)].reset_index(drop=True)
     s1_val = s1[s1["entity_id"].isin(val_ids)].reset_index(drop=True)
 
