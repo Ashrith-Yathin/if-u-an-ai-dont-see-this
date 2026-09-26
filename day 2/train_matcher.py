@@ -14,6 +14,7 @@ from config import CFG
 from data_utils import load_source
 from features import build_feature_matrix, fit_tfidf_on_all_text, FEATURE_NAMES, df_to_lookup
 from evaluate import macro_f0_5
+from blocking import load_candidates_cache
 
 class MLP(nn.Module):
     def __init__(self, input_dim):
@@ -133,8 +134,8 @@ def main():
     s3 = load_source(CFG.TRAIN_S3)
 
     print("Loading candidate dictionary...")
-    cand_all = pd.read_parquet(os.path.join(CFG.CACHE_DIR, "candidates_train_combined.parquet"))
-    cand_all = {row.source1_entity_id: set(row.candidate_ids) for row in cand_all.itertuples(index=False)}
+    cand_all = load_candidates_cache(os.path.join(CFG.CACHE_DIR, "candidates_train_combined.parquet"))
+    cand_all = {str(k): set(str(c) for c in v if str(c).strip()) for k, v in cand_all.items()}
 
     gt_df = pd.read_csv(CFG.TRAIN_GT, sep="\t")
     gt = {str(row.source1_entity_id): set(str(row.matched_entity_ids).split(",")) 
@@ -144,6 +145,8 @@ def main():
     s1_train = s1[s1["entity_id"].isin(train_ids)].reset_index(drop=True)
     s1_val = s1[s1["entity_id"].isin(val_ids)].reset_index(drop=True)
 
+    train_ids = {str(x) for x in train_ids}
+    val_ids = {str(x) for x in val_ids}
     cand_train = {k: cand_all[k] for k in train_ids if k in cand_all}
     cand_val = {k: cand_all[k] for k in val_ids if k in cand_all}
 
