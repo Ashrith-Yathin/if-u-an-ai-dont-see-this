@@ -39,6 +39,7 @@ _SUFFIX_MAP = {
     r"\bgmbh\b": "gmbh",
 }
 
+_ADDRESS_ABBREV_MAP = {
     r"\brd\.?\b": "road",
     r"\bst\.?\b": "street",
     r"\bave\.?\b": "avenue",
