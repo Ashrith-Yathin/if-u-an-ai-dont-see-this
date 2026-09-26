@@ -53,7 +53,7 @@ def string_key_candidates(s1_df, other_df, prefix_len=None, max_candidates=None,
     max_candidates = max_candidates or getattr(CFG, "MAX_STRING_CANDIDATES_PER_KEY", 300)
 
     other_by_key = defaultdict(list)
-    for row in tqdm(other_df.itertuples(index=False), total=len(other_df), desc="  Indexing string keys (target)"):
+    for row in tqdm(other_df.itertuples(index=False), total=len(other_df), desc="  Indexing string keys (target)", mininterval=5.0):
         key = blocking_key(row.norm_name, row.country, prefix_len)
         other_by_key[key].append(row.entity_id)
 
@@ -69,7 +69,7 @@ def string_key_candidates(s1_df, other_df, prefix_len=None, max_candidates=None,
     gc.collect()
 
     candidates = {}
-    for row in tqdm(s1_df.itertuples(index=False), total=len(s1_df), desc="  Matching string keys (source)"):
+    for row in tqdm(s1_df.itertuples(index=False), total=len(s1_df), desc="  Matching string keys (source)", mininterval=5.0):
         key = blocking_key(row.norm_name, row.country, prefix_len)
         cands = other_by_key_tuple.get(key)
         if cands:
