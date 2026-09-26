@@ -68,12 +68,12 @@ def string_key_candidates(s1_df, other_df, prefix_len=None, max_candidates=None,
     del other_by_key
     gc.collect()
 
-    empty_tuple = ()
     candidates = {}
     for row in tqdm(s1_df.itertuples(index=False), total=len(s1_df), desc="  Matching string keys (source)"):
         key = blocking_key(row.norm_name, row.country, prefix_len)
-        cands = other_by_key_tuple.get(key, empty_tuple)
-        candidates[row.entity_id] = set(cands)
+        cands = other_by_key_tuple.get(key)
+        if cands:
+            candidates[row.entity_id] = list(cands)
 
     del other_by_key_tuple
     gc.collect()
@@ -221,9 +221,6 @@ def generate_candidates(s1_df, s2_df, s3_df, use_embeddings=None, cache_prefix=N
     key_s3 = string_key_candidates(s1_df, s3_df, cache_path=s3_cache)
 
     combined = defaultdict(set)
-    # Pre-seed so entities with zero candidates still appear in the result dict.
-    for s1_id in s1_df["entity_id"]:
-        combined[s1_id]  # touch to insert empty set
     for s1_id in s1_df["entity_id"]:
         if s1_id in key_s2:
             combined[s1_id].update(key_s2[s1_id])
