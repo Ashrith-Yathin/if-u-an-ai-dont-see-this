@@ -11,10 +11,9 @@ import pandas as pd
 from tqdm import tqdm
 
 from config import CFG
-from data_utils import load_source, df_to_lookup
-from features import build_feature_matrix, fit_tfidf_on_all_text, FEATURE_NAMES
-from metrics import candidate_recall, tune_threshold, precision_recall_summary
-from evaluate import entity_level_split
+from data_utils import load_source
+from features import build_feature_matrix, fit_tfidf_on_all_text, FEATURE_NAMES, df_to_lookup
+from evaluate import macro_f0_5
 
 class MLP(nn.Module):
     def __init__(self, input_dim):
@@ -104,6 +103,29 @@ def build_training_pairs(cand_train: dict, gt: dict, max_negatives: int, seed: i
                 neg_pairs.append((s1_id, c))
     return pos_pairs, neg_pairs
 
+def entity_level_split(s1_ids, val_frac, seed):
+    import random
+    rng = random.Random(seed)
+    ids = list(s1_ids)
+    rng.shuffle(ids)
+    n_val = int(len(ids) * val_frac)
+    return set(ids[n_val:]), set(ids[:n_val])
+
+
+def tune_threshold(scores, valid_pairs, ground_truth, all_s1_ids_in_split):
+    best_t, best_f0_5 = 0.5, -1.0
+    for t in tqdm(np.arange(0.1, 0.95, 0.05), desc="  Sweeping F_0.5 thresholds"):
+        preds = {s1_id: set() for s1_id in all_s1_ids_in_split}
+        for (s1_id, other_id), score in zip(valid_pairs, scores):
+            if score >= t:
+                preds[s1_id].add(other_id)
+        truth_subset = {k: v for k, v in ground_truth.items() if k in all_s1_ids_in_split}
+        result = macro_f0_5(preds, truth_subset)
+        if result["macro_f0_5"] > best_f0_5:
+            best_f0_5, best_t = result["macro_f0_5"], t
+    return best_t, best_f0_5
+
+
 def main():
     print("Loading datasets...")
     s1 = load_source(CFG.TRAIN_S1)
@@ -112,7 +134,7 @@ def main():
 
     print("Loading candidate dictionary...")
     cand_all = pd.read_parquet(os.path.join(CFG.CACHE_DIR, "candidates_train_combined.parquet"))
-    cand_all = {row.entity_id: set(row.candidates) for row in cand_all.itertuples(index=False)}
+    cand_all = {row.source1_entity_id: set(row.candidate_ids) for row in cand_all.itertuples(index=False)}
 
     gt_df = pd.read_csv(CFG.TRAIN_GT, sep="\t")
     gt = {str(row.source1_entity_id): set(str(row.matched_entity_ids).split(",")) 
