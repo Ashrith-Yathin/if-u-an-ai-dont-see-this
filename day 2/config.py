@@ -65,7 +65,7 @@ class Config:
     TRAIN_ENTITY_SAMPLE: int = 175_000    # None = use all; int = stratified subsample size
     TEST_ENTITY_SAMPLE: int = None         # None = use all for full submission run
     TRAIN_ENTITY_SAMPLE_SEED: int = 42   # separate seed so changing it doesn't affect other rng
-    TFIDF_SAMPLE_SIZE: int = 500_000     # Subsample size per dataframe to avoid memory blowup during TF-IDF fitting
+    TFIDF_SAMPLE_SIZE: int = 100_000     # Subsample size per dataframe to avoid memory blowup during TF-IDF fitting
 
 
     # ---- GPU acceleration (for 80 GB VRAM Linux server) ----
