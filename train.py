@@ -13,9 +13,9 @@ if src_dir not in sys.path:
 
 import normalization as norm
 from features import extract_features_for_pair, FEATURE_NAMES
-from model import EntityMatcherModel
+from model import EntityMatcherModel, apply_hard_vetoes, calibrate_model
 from evaluation import evaluate_predictions
-from thresholding import optimize_source_specific_thresholds, apply_threshold_and_deduplication
+from thresholding import calibrate_thresholds_2d, apply_threshold_and_deduplication
 from blocking import get_blocking_keys
 
 
@@ -255,26 +255,58 @@ def main():
                 val_pair_list.append((sid, tid, feats))
 
     X_val = np.array([p[2] for p in val_pair_list], dtype=np.float32)
-    val_probas = final_model.predict_proba(X_val)
+    val_countries = [s1_preprocessed[sid][4] for sid, _, _ in val_pair_list]
+    
+    # Isotonic Calibration (Split validation to prevent double-dipping)
+    import random
+    val_s1_list = list(val_s1_set)
+    random.seed(42)
+    random.shuffle(val_s1_list)
+    mid_idx = len(val_s1_list) // 2
+    calib_ids = set(val_s1_list[:mid_idx])
+    thresh_ids = set(val_s1_list[mid_idx:])
+    
+    calib_pairs = [p for p in val_pair_list if p[0] in calib_ids]
+    if calib_pairs:
+        X_calib = np.array([p[2] for p in calib_pairs], dtype=np.float32)
+        y_calib = np.array([1 if p[1] in val_gt.get(p[0], set()) else 0 for p in calib_pairs], dtype=np.int32)
+        final_model.model = calibrate_model(final_model.model, X_calib, y_calib)
+
+    # Threshold Sweeping on disjoint set
+    thresh_pairs = [p for p in val_pair_list if p[0] in thresh_ids]
+    X_thresh = np.array([p[2] for p in thresh_pairs], dtype=np.float32)
+    thresh_countries = [s1_preprocessed[sid][4] for sid, _, _ in thresh_pairs]
+    
+    thresh_probas = final_model.predict_proba(X_thresh)
+    
+    # Hard Veto Layer
+    vetoed = apply_hard_vetoes(X_thresh, thresh_countries)
+    thresh_probas[vetoed] = 0.0
 
     scores_dict = collections.defaultdict(list)
-    for (sid, tid, _), p in zip(val_pair_list, val_probas):
+    for (sid, tid, _), p in zip(thresh_pairs, thresh_probas):
         scores_dict[sid].append((tid, float(p)))
 
-    for sid in val_s1_ids:
+    for sid in thresh_ids:
         if sid not in scores_dict:
             scores_dict[sid] = []
 
-    opt_s2, opt_s3, best_metrics = optimize_source_specific_thresholds(val_gt, scores_dict)
-    preds = apply_threshold_and_deduplication(scores_dict, opt_s2, opt_s3)
-    metrics = evaluate_predictions(val_gt, preds)
+    # 2D Threshold Calibration
+    opt_2d = calibrate_thresholds_2d(val_gt, scores_dict, thresh_pairs, thresh_countries)
+    
+    s1_countries_map = {sid: s1_preprocessed[sid][4] for sid in thresh_ids}
+    preds = apply_threshold_and_deduplication(scores_dict, threshold_map_2d=opt_2d, s1_countries_map=s1_countries_map)
+    
+    # We evaluate only on the thresh_ids
+    thresh_gt = {k: v for k, v in val_gt.items() if k in thresh_ids}
+    metrics = evaluate_predictions(thresh_gt, preds)
 
     val_cand_recall = retrieved_val_true / total_val_true if total_val_true > 0 else 0.0
 
     print('\n' + '=' * 60)
     print('FINAL MODEL VALIDATION RESULTS')
     print('=' * 60)
-    print(f"Optimal Thresholds: S2 = {opt_s2:.2f}, S3 = {opt_s3:.2f}")
+    print(f"Optimal 2D Thresholds: {opt_2d}")
     print(f"Validation F0.5   : {metrics['macro_f05']:.6f}")
     print(f"Precision         : {metrics['global_precision']:.6f}")
     print(f"Recall            : {metrics['global_recall']:.6f}")
@@ -291,8 +323,7 @@ def main():
     final_model.save(args.model_out)
 
     meta = {
-        'optimal_s2_threshold': float(opt_s2),
-        'optimal_s3_threshold': float(opt_s3),
+        'optimal_thresholds_2d': opt_2d,
         'validation_f05': float(metrics['macro_f05']),
         'validation_precision': float(metrics['global_precision']),
         'validation_recall': float(metrics['global_recall']),

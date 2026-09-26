@@ -1,4 +1,5 @@
 import numpy as np
+import collections
 from evaluation import evaluate_predictions
 
 
@@ -29,53 +30,96 @@ def optimize_global_threshold(ground_truth_dict, candidate_scores_dict, threshol
     return best_threshold, best_metrics
 
 
-def optimize_source_specific_thresholds(ground_truth_dict, candidate_scores_dict,
-                                        s2_grid=None, s3_grid=None):
-    """
-    Finds separate thresholds for S2 and S3 candidates.
-    """
-    if s2_grid is None:
-        s2_grid = np.linspace(0.40, 0.85, 10)
-    if s3_grid is None:
-        s3_grid = np.linspace(0.40, 0.85, 10)
-
-    best_s2 = 0.5
-    best_s3 = 0.5
-    best_metrics = None
-    best_f05 = -1.0
-
-    for t2 in s2_grid:
-        for t3 in s3_grid:
-            preds = {}
-            for s1_id, scores in candidate_scores_dict.items():
-                matched = set()
-                for tid, p in scores:
-                    if tid.startswith('S2-') and p >= t2:
-                        matched.add(tid)
-                    elif tid.startswith('S3-') and p >= t3:
-                        matched.add(tid)
-                preds[s1_id] = matched
-
-            metrics = evaluate_predictions(ground_truth_dict, preds)
-            if metrics['macro_f05'] > best_f05:
-                best_f05 = metrics['macro_f05']
-                best_s2 = float(t2)
-                best_s3 = float(t3)
-                best_metrics = metrics
-
-    return best_s2, best_s3, best_metrics
+def _sweep_threshold_numpy(val_gt, scores_dict, subset_pairs):
+    s1_ids = {sid for sid, tid in subset_pairs}
+    local_gt = {k: v for k, v in val_gt.items() if k in s1_ids}
+    subset_set = set(subset_pairs)
+    
+    best_th, best_f = 0.5, -1
+    for th in np.arange(0.1, 0.96, 0.02):
+        preds = collections.defaultdict(set)
+        for sid in s1_ids:
+            for tid, p in scores_dict.get(sid, []):
+                if (sid, tid) in subset_set and p >= th:
+                    preds[sid].add(tid)
+                    
+        metrics = evaluate_predictions(local_gt, preds)
+        if metrics['macro_f05'] > best_f:
+            best_f = metrics['macro_f05']
+            best_th = float(th)
+            
+    return best_th, best_f
 
 
-def apply_threshold_and_deduplication(candidate_scores_dict, s2_threshold=0.5, s3_threshold=0.5):
+def calibrate_thresholds_2d(val_gt, scores_dict, val_pair_list, val_countries, min_group_size=1000):
+    subset_all = [(sid, tid) for sid, tid, _ in val_pair_list]
+    global_th, global_f = _sweep_threshold_numpy(val_gt, scores_dict, subset_all)
+    print(f'GLOBAL: threshold={global_th:.2f} F_0.5={global_f:.4f} (n={len(subset_all)})')
+    
+    country_th = {}
+    country_pairs = collections.defaultdict(list)
+    for i, (sid, tid, _) in enumerate(val_pair_list):
+        c = val_countries[i]
+        country_pairs[c].append((sid, tid))
+        
+    for country, pairs in country_pairs.items():
+        if len(pairs) < min_group_size:
+            country_th[country] = global_th
+            continue
+        th, f = _sweep_threshold_numpy(val_gt, scores_dict, pairs)
+        country_th[country] = th
+        print(f'{country}: threshold={th:.2f} F_0.5={f:.4f} (n={len(pairs)})')
+        
+    country_source_th = {}
+    country_source_pairs = collections.defaultdict(list)
+    for i, (sid, tid, _) in enumerate(val_pair_list):
+        c = val_countries[i]
+        source = tid[:2]
+        country_source_pairs[(c, source)].append((sid, tid))
+        
+    for (country, source), pairs in country_source_pairs.items():
+        if len(pairs) < min_group_size:
+            th_fallback = country_th.get(country, global_th)
+            country_source_th[f"{country}_{source}"] = th_fallback
+            print(f'{country}/{source}: n={len(pairs)} < {min_group_size} -> fallback to {th_fallback:.2f}')
+            continue
+        th, f = _sweep_threshold_numpy(val_gt, scores_dict, pairs)
+        country_source_th[f"{country}_{source}"] = th
+        print(f'{country}/{source}: threshold={th:.2f} F_0.5={f:.4f} (n={len(pairs)})')
+        
+    return {'global': global_th, 'country': country_th, 'country_source': country_source_th}
+
+
+def lookup_threshold(threshold_map_2d, country, source):
+    if not threshold_map_2d:
+        return 0.5
+    cs_map = threshold_map_2d.get('country_source', {})
+    c_map = threshold_map_2d.get('country', {})
+    g_th = threshold_map_2d.get('global', 0.5)
+    
+    cs_key = f"{country}_{source}"
+    if cs_key in cs_map:
+        return cs_map[cs_key]
+    if country in c_map:
+        return c_map[country]
+    return g_th
+
+
+def apply_threshold_and_deduplication(candidate_scores_dict, s2_threshold=0.5, s3_threshold=0.5, threshold_map_2d=None, s1_countries_map=None):
     """
     Applies thresholds and enforces that each target (S2/S3) is assigned to at most one S1
     (the S1 with the highest probability score).
     """
-    # First gather all (s1_id, target_id, proba) above threshold
     all_pairs = []
     for s1_id, scores in candidate_scores_dict.items():
+        c = s1_countries_map.get(s1_id, 'us') if s1_countries_map else 'us'
+            
         for tid, p in scores:
-            t = s2_threshold if tid.startswith('S2-') else s3_threshold
+            if threshold_map_2d:
+                t = lookup_threshold(threshold_map_2d, c, tid[:2])
+            else:
+                t = s2_threshold if tid.startswith('S2-') else s3_threshold
+                
             if p >= t:
                 all_pairs.append((p, s1_id, tid))
 

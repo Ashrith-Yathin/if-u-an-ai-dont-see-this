@@ -1,4 +1,5 @@
 import collections
+import jellyfish
 import normalization as norm
 
 COMMON_ADDR_WORDS = {
@@ -10,6 +11,14 @@ COMMON_ADDR_WORDS = {
     'bazaar', 'marg', 'gali', 'null', 'rd', 'st', 'ave', 'blvd', 'dr', 'ct', 'ln',
     'hwy', 'apt', 'ste', 'first', 'second', 'third', 'ground'
 }
+
+
+def phonetic_key(name_tokens):
+    """Double Metaphone of the first two tokens -- catches typos/misspellings."""
+    if not name_tokens:
+        return None
+    codes = [jellyfish.metaphone(t) for t in name_tokens[:2] if t]
+    return '_'.join(c for c in codes if c) or None
 
 
 def get_blocking_keys(name, addr, country):
@@ -44,6 +53,11 @@ def get_blocking_keys(name, addr, country):
     for t in n_tokens:
         if len(t) >= 4:
             keys.add(('n_tok', t))
+
+    # 4.5 Phonetic pass
+    phon = phonetic_key(n_tokens)
+    if phon:
+        keys.add(('n_phon', phon))
 
     # Address tokens: extract significant words
     sig_addr_words = [t for t in a_tokens if t not in COMMON_ADDR_WORDS and len(t) >= 3 and not t.isdigit()]

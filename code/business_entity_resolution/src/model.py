@@ -3,6 +3,30 @@ import joblib
 import numpy as np
 import lightgbm as lgb
 from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.calibration import CalibratedClassifierCV
+
+
+def apply_hard_vetoes(X, countries):
+    """
+    Precision guardrails a classifier can't reliably learn on its own.
+    Adapted for Numpy arrays where:
+    n_set = X[:, 5], has_addr = X[:, 14], a_set = X[:, 19]
+    """
+    ADDR_VETO_FLOOR = {'us': 0.25, 'fr': 0.25, 'in': 0.08}
+    floors = np.array([ADDR_VETO_FLOOR.get(c, 0.25) for c in countries])
+    
+    n_set = X[:, 5]
+    has_addr = X[:, 14]
+    a_set = X[:, 19]
+    
+    vetoed = (n_set > 0.92) & (has_addr == 1.0) & (a_set < floors)
+    return vetoed
+
+
+def calibrate_model(lgbm_model, X_calib, y_calib):
+    calibrated = CalibratedClassifierCV(lgbm_model, method='isotonic', cv='prefit')
+    calibrated.fit(X_calib, y_calib)
+    return calibrated
 
 
 class EntityMatcherModel:

@@ -8,7 +8,7 @@ import numpy as np
 
 import normalization as norm
 from features import extract_features_for_pair, FEATURE_NAMES
-from model import EntityMatcherModel
+from model import EntityMatcherModel, apply_hard_vetoes
 from blocking import get_blocking_keys, build_inverted_index_for_country, retrieve_candidates_for_s1
 from thresholding import apply_threshold_and_deduplication
 from output import write_submission_tsv, write_final_report
@@ -35,7 +35,8 @@ def run_test_inference(test_dir, model_path, meta_path, output_dir, batch_size=5
 
     s2_threshold = meta.get('optimal_s2_threshold', 0.75)
     s3_threshold = meta.get('optimal_s3_threshold', 0.85)
-    print(f'Using decision thresholds: S2 = {s2_threshold:.2f}, S3 = {s3_threshold:.2f}')
+    opt_2d = meta.get('optimal_thresholds_2d', {})
+    print(f'Using 2D decision thresholds mapping: {opt_2d}')
 
     # 2. Read test_source1.tsv and preserve original order
     s1_path = os.path.join(test_dir, 'test_source1.tsv')
@@ -166,6 +167,12 @@ def run_test_inference(test_dir, model_path, meta_path, output_dir, batch_size=5
             if batch_pairs:
                 X_batch = np.array([p[2] for p in batch_pairs], dtype=np.float32)
                 probas = model.predict_proba(X_batch)
+                
+                # Apply hard vetoes
+                batch_countries = [country] * len(batch_pairs)
+                vetoed = apply_hard_vetoes(X_batch, batch_countries)
+                probas[vetoed] = 0.0
+                
                 for (eid, tid, _), p in zip(batch_pairs, probas):
                     c_scores_dict[eid].append((tid, float(p)))
 
@@ -174,7 +181,8 @@ def run_test_inference(test_dir, model_path, meta_path, output_dir, batch_size=5
 
         # Apply threshold and target deduplication
         print('  Applying decision thresholds and 1-to-1 target consistency...')
-        c_matches = apply_threshold_and_deduplication(c_scores_dict, s2_threshold, s3_threshold)
+        s1_countries_map = {eid: country for eid in c_scores_dict.keys()}
+        c_matches = apply_threshold_and_deduplication(c_scores_dict, threshold_map_2d=opt_2d, s1_countries_map=s1_countries_map)
         for eid, mids in c_matches.items():
             all_matched_results[eid] = mids
 
@@ -227,10 +235,9 @@ def run_test_inference(test_dir, model_path, meta_path, output_dir, batch_size=5
             'False Negatives': meta.get('false_negatives', 951)
         },
         'Model Configuration': {
-            'Selected Model': 'LightGBM Gradient Boosted Decision Trees',
+            'Selected Model': 'LightGBM Gradient Boosted Decision Trees (Isotonic Calibrated)',
             'Tree Parameters': 'n_estimators=350, max_depth=7, num_leaves=63, lr=0.04',
-            'Optimal S2 Threshold': f'{s2_threshold:.2f}',
-            'Optimal S3 Threshold': f'{s3_threshold:.2f}',
+            'Optimal 2D Thresholds': str(opt_2d),
             'Global Consistency': 'Source-aware 1-to-1 target assignment (Greedy Highest-Probability)',
             'Feature Set Size': len(FEATURE_NAMES)
         },

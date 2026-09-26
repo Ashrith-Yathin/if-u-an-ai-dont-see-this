@@ -209,7 +209,7 @@ amazon-ml-challenge-2026/
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/Akash-bardia/amazon-ml-challenge-2026.git
+   git clone https://github.com/Ashrith-bardia/amazon-ml-challenge-2026.git
    cd amazon-ml-challenge-2026
    ```
 
@@ -274,4 +274,4 @@ Expected output: **`PASS`**
 ---
 
 ## 👥 Authors
-- **Akash Bardia** ([@Akash-bardia](https://github.com/Akash-bardia))
+- **Ashrith** ([@Ashrith-bardia](https://github.com/Ashrith-bardia))
